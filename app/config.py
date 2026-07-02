@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     llm_model: str = Field(default="claude-3-5-haiku-latest", alias="LLM_MODEL")
     llm_timeout_seconds: int = Field(default=30, alias="LLM_TIMEOUT_SECONDS")
+    llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
+    capability_judge_confidence_threshold: float = Field(
+        default=0.75,
+        alias="CAPABILITY_JUDGE_CONFIDENCE_THRESHOLD",
+    )
 
     # Embeddings (fastembed ONNX bge-small)
     embedding_model: str = Field(
