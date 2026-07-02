@@ -47,6 +47,14 @@ def settings() -> Settings:
     return Settings()
 
 
+@pytest.fixture
+def stub_llm() -> "StubLLMProvider":
+    """Deterministic stub LLM for guardrail and capability tests."""
+    from app.llm.stub_provider import StubLLMProvider
+
+    return StubLLMProvider()
+
+
 @pytest.fixture(scope="session")
 def db_engine() -> Generator[Engine, None, None]:
     """Session-scoped engine with migrations applied (requires local Postgres)."""
