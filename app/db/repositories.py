@@ -250,6 +250,164 @@ def upsert_risk_profile(
     return existing
 
 
+def get_session_by_id(db: Session, session_id: uuid.UUID) -> SessionRow | None:
+    """Fetch a session row by primary key."""
+    return db.get(SessionRow, session_id)
+
+
+def resolve_or_create_session(
+    db: Session,
+    *,
+    user_id: str,
+    session_id: uuid.UUID | None,
+    now: datetime,
+    session_metadata: dict[str, Any] | None = None,
+) -> SessionRow:
+    """Reuse an active session or create a new one when id is null/stale."""
+    settings = get_settings()
+    if session_id is not None:
+        existing = get_session_by_id(db, session_id)
+        if existing is not None and existing.user_id == user_id:
+            inactive_seconds = (now - existing.last_event_at).total_seconds()
+            if inactive_seconds <= settings.inactivity_reset_seconds:
+                return existing
+
+    row = create_session(
+        db,
+        user_id=user_id,
+        started_at=now,
+        session_metadata=session_metadata,
+    )
+    return row
+
+
+def list_detected_patterns(
+    db: Session,
+    user_id: str,
+    *,
+    pattern_type: str | None = None,
+    limit: int = 50,
+) -> list[DetectedPatternRow]:
+    """Return recent detected patterns for a user."""
+    stmt = (
+        select(DetectedPatternRow)
+        .where(DetectedPatternRow.user_id == user_id)
+        .order_by(desc(DetectedPatternRow.detected_at))
+        .limit(limit)
+    )
+    if pattern_type is not None:
+        stmt = stmt.where(DetectedPatternRow.pattern_type == pattern_type)
+    return list(db.scalars(stmt).all())
+
+
+def list_alerts(
+    db: Session,
+    *,
+    status: str | None = None,
+    user_id: str | None = None,
+    since: datetime | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[AlertRow], int]:
+    """Return filtered alerts and total count."""
+    filters = []
+    if status is not None:
+        filters.append(AlertRow.status == status)
+    if user_id is not None:
+        filters.append(AlertRow.user_id == user_id)
+    if since is not None:
+        filters.append(AlertRow.created_at >= since)
+
+    count_stmt = select(func.count()).select_from(AlertRow)
+    list_stmt = select(AlertRow).order_by(desc(AlertRow.created_at))
+    if filters:
+        count_stmt = count_stmt.where(*filters)
+        list_stmt = list_stmt.where(*filters)
+
+    total = int(db.scalar(count_stmt) or 0)
+    rows = list(db.scalars(list_stmt.limit(limit).offset(offset)).all())
+    return rows, total
+
+
+def get_alert_by_id(db: Session, alert_id: uuid.UUID) -> AlertRow | None:
+    """Fetch one alert by id."""
+    return db.get(AlertRow, alert_id)
+
+
+def update_alert_status(db: Session, alert_id: uuid.UUID, status: str) -> AlertRow | None:
+    """Patch alert status."""
+    row = get_alert_by_id(db, alert_id)
+    if row is None:
+        return None
+    row.status = status
+    db.flush()
+    return row
+
+
+def set_user_last_event_at(db: Session, user_id: str, ts: datetime) -> UserRiskProfileRow:
+    """Admin helper to backdate last_event_at for inactivity-reset tests."""
+    acquire_user_advisory_lock(db, user_id)
+    existing = get_risk_profile(db, user_id)
+    if existing is None:
+        row = UserRiskProfileRow(
+            user_id=user_id,
+            risk_score=Decimal("0"),
+            last_event_at=ts,
+            status="normal",
+            version=0,
+        )
+        db.add(row)
+        db.flush()
+        return row
+
+    existing.last_event_at = ts
+    existing.version += 1
+    db.flush()
+    return existing
+
+
+def reset_user_risk_profile(db: Session, user_id: str) -> UserRiskProfileRow:
+    """Admin manual reset: zero score, signals, and status."""
+    acquire_user_advisory_lock(db, user_id)
+    now = datetime.now(UTC)
+    update = RiskProfileUpdate(
+        risk_score=Decimal("0"),
+        signal_probing=Decimal("0"),
+        signal_escalation=Decimal("0"),
+        signal_enumeration=Decimal("0"),
+        last_scored_at=now,
+        status="normal",
+    )
+    existing = get_risk_profile(db, user_id)
+    if existing is None:
+        return upsert_risk_profile(
+            db,
+            user_id,
+            RiskProfileUpdate(
+                risk_score=Decimal("0"),
+                signal_probing=Decimal("0"),
+                signal_escalation=Decimal("0"),
+                signal_enumeration=Decimal("0"),
+                last_event_at=get_latest_user_event_at(db, user_id),
+                last_scored_at=now,
+                session_count=count_user_sessions(db, user_id),
+                interaction_count=count_user_interactions(db, user_id),
+                status="normal",
+            ),
+            acquire_lock=False,
+        )
+
+    existing.risk_score = update.risk_score
+    existing.signal_probing = update.signal_probing
+    existing.signal_escalation = update.signal_escalation
+    existing.signal_enumeration = update.signal_enumeration
+    existing.last_scored_at = update.last_scored_at
+    existing.status = update.status
+    existing.version += 1
+    db.flush()
+    return existing
+
+
 def count_user_sessions(db: Session, user_id: str) -> int:
     """Return total session count for a user."""
     return int(
