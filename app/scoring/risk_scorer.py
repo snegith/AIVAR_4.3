@@ -15,6 +15,7 @@ from typing import Any
 
 from app.config import Settings, get_settings
 from app.db.repositories import RiskProfileUpdate
+from app.detectors.base import DetectorResult
 from app.logging import get_logger
 
 logger = get_logger(__name__)
@@ -22,11 +23,30 @@ logger = get_logger(__name__)
 
 @dataclass(frozen=True)
 class ScoreSignals:
-    """Detector sub-signals in [0, 1] for one scoring cycle."""
+    """Detector sub-signals in [0, 1] for one scoring cycle.
+
+    Values must come from ``DetectorResult.signal`` after detector-side gating
+    (``gated_signal``: raw * 0.3 when ``fired=False``). The scorer does not
+    re-apply dampening — it must not zero non-fired signals.
+    """
 
     probing: float
     escalation: float
     enumeration: float
+
+    @classmethod
+    def from_detector_results(
+        cls,
+        probing: DetectorResult,
+        escalation: DetectorResult,
+        enumeration: DetectorResult,
+    ) -> ScoreSignals:
+        """Build score inputs from detector outputs using pre-damped ``signal`` values."""
+        return cls(
+            probing=probing.signal,
+            escalation=escalation.signal,
+            enumeration=enumeration.signal,
+        )
 
 
 @dataclass(frozen=True)

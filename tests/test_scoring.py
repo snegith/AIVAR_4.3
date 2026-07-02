@@ -8,12 +8,69 @@ from decimal import Decimal
 import pytest
 
 from app.config import Settings
+from app.detectors import enumeration, escalation, probing
+from app.detectors.base import DetectorResult, gated_signal
 from app.db.repositories import RiskProfileUpdate, upsert_risk_profile
 from app.scoring.risk_scorer import ProfileSnapshot, RiskScorer, ScoreSignals
+from tests.detector_helpers import (
+    make_enumeration_benign_window,
+    make_escalation_benign_window,
+    make_probing_benign_window,
+)
 
 
 def _scorer(**overrides: float | int) -> RiskScorer:
     return RiskScorer(Settings(**overrides))
+
+
+def test_scorer_uses_damped_detector_signals_not_zeroed() -> None:
+    """Non-fired detectors must contribute raw*0.3 via .signal, not be zeroed."""
+    esc_result = escalation.detect(make_escalation_benign_window())
+    enum_result = enumeration.detect(make_enumeration_benign_window())
+    probe_result = probing.detect(make_probing_benign_window())
+
+    assert esc_result.fired is False
+    assert enum_result.fired is False
+    assert esc_result.signal > 0.0
+    assert enum_result.signal > 0.0
+
+    signals = ScoreSignals.from_detector_results(probe_result, esc_result, enum_result)
+    assert signals.escalation == pytest.approx(esc_result.signal)
+    assert signals.enumeration == pytest.approx(enum_result.signal)
+    assert signals.probing == pytest.approx(probe_result.signal)
+
+    scorer = _scorer()
+    damped_inst = scorer.compute_instantaneous_score(signals)
+    zeroed_inst = scorer.compute_instantaneous_score(
+        ScoreSignals(probing=0.0, escalation=0.0, enumeration=0.0)
+    )
+    assert damped_inst > zeroed_inst
+    assert damped_inst == pytest.approx(
+        100.0
+        * (
+            scorer.settings.weight_probing * probe_result.signal
+            + scorer.settings.weight_escalation * esc_result.signal
+            + scorer.settings.weight_enumeration * enum_result.signal
+        )
+    )
+
+
+def test_gated_signal_dampening_matches_detector_contract() -> None:
+    """Detectors apply *0.3 when not fired; scorer must consume that value as-is."""
+    raw = 0.68
+    damped = gated_signal(raw, fired=False)
+    assert damped == pytest.approx(raw * 0.3)
+
+    result = DetectorResult(signal=damped, fired=False, evidence={})
+    signals = ScoreSignals.from_detector_results(
+        DetectorResult(signal=0.0, fired=False, evidence={}),
+        result,
+        DetectorResult(signal=0.0, fired=False, evidence={}),
+    )
+    scorer = _scorer()
+    s_inst = scorer.compute_instantaneous_score(signals)
+    assert s_inst == pytest.approx(100.0 * scorer.settings.weight_escalation * damped)
+    assert s_inst > 0.0
 
 
 def test_instantaneous_score_weighted_combine() -> None:
