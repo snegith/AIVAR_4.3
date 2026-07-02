@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="claude-3-5-haiku-latest", alias="LLM_MODEL")
     llm_timeout_seconds: int = Field(default=30, alias="LLM_TIMEOUT_SECONDS")
 
+    # Embeddings (fastembed ONNX bge-small)
+    embedding_model: str = Field(
+        default="BAAI/bge-small-en-v1.5",
+        alias="EMBEDDING_MODEL",
+    )
+
     # Admin
     admin_key: str = Field(default="change-me-in-production", alias="ADMIN_KEY")
 
