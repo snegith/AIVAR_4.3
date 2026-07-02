@@ -16,7 +16,13 @@ from sqlalchemy import Select, desc, func, select, text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.db.models import InteractionRow, SessionRow, UserRiskProfileRow
+from app.db.models import (
+    AlertRow,
+    DetectedPatternRow,
+    InteractionRow,
+    SessionRow,
+    UserRiskProfileRow,
+)
 from app.logging import get_logger
 
 logger = get_logger(__name__)
@@ -196,13 +202,15 @@ def upsert_risk_profile(
     update: RiskProfileUpdate,
     *,
     expected_version: int | None = None,
+    acquire_lock: bool = True,
 ) -> UserRiskProfileRow:
     """Upsert user_risk_profiles under advisory lock with optimistic version check.
 
   If expected_version is provided on an existing row, the update fails with
   OptimisticLockError when the stored version differs.
     """
-    acquire_user_advisory_lock(db, user_id)
+    if acquire_lock:
+        acquire_user_advisory_lock(db, user_id)
 
     existing = db.get(UserRiskProfileRow, user_id)
     if existing is None:
@@ -250,3 +258,83 @@ def count_user_sessions(db: Session, user_id: str) -> int:
         )
         or 0
     )
+
+
+def count_user_interactions(db: Session, user_id: str) -> int:
+    """Return total interaction count for a user."""
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(InteractionRow)
+            .where(InteractionRow.user_id == user_id)
+        )
+        or 0
+    )
+
+
+def get_risk_profile(db: Session, user_id: str) -> UserRiskProfileRow | None:
+    """Fetch the current risk profile row for a user."""
+    return db.get(UserRiskProfileRow, user_id)
+
+
+def get_latest_user_event_at(db: Session, user_id: str) -> datetime | None:
+    """Return the timestamp of the user's most recent interaction."""
+    return db.scalar(
+        select(func.max(InteractionRow.ts)).where(InteractionRow.user_id == user_id)
+    )
+
+
+def create_detected_pattern(
+    db: Session,
+    *,
+    user_id: str,
+    pattern_type: str,
+    detected_at: datetime,
+    signal_strength: Decimal | None,
+    window_start: datetime | None,
+    window_end: datetime | None,
+    evidence: dict[str, Any] | None,
+    contributing_interaction_ids: list[uuid.UUID] | None,
+) -> DetectedPatternRow:
+    """Insert a detected_patterns row for a fired detector cycle."""
+    row = DetectedPatternRow(
+        user_id=user_id,
+        pattern_type=pattern_type,
+        detected_at=detected_at,
+        signal_strength=signal_strength,
+        window_start=window_start,
+        window_end=window_end,
+        evidence=evidence,
+        contributing_interaction_ids=contributing_interaction_ids,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def create_alert(
+    db: Session,
+    *,
+    user_id: str,
+    created_at: datetime,
+    risk_score_at_alert: Decimal,
+    threshold: Decimal,
+    dominant_pattern: str,
+    pattern_breakdown: dict[str, Any],
+    summary: str,
+    contributing_pattern_ids: list[uuid.UUID] | None,
+) -> AlertRow:
+    """Insert an alerts row when composite risk crosses the threshold."""
+    row = AlertRow(
+        user_id=user_id,
+        created_at=created_at,
+        risk_score_at_alert=risk_score_at_alert,
+        threshold=threshold,
+        dominant_pattern=dominant_pattern,
+        pattern_breakdown=pattern_breakdown,
+        summary=summary,
+        contributing_pattern_ids=contributing_pattern_ids,
+    )
+    db.add(row)
+    db.flush()
+    return row
