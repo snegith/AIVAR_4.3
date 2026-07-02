@@ -1,0 +1,36 @@
+---
+description: Phase-by-phase build workflow for PS-4.3 adversarial detector
+alwaysApply: true
+---
+
+# PS-4.3 Phase Workflow
+
+Build one phase per session from `PS-4.3-Implementation-Plan.md`. Complete exactly one phase, then stop and wait for human **"approved"** or **"proceed"** before Phase N+1.
+
+## End of every phase
+
+1. **Self-audit** — For each phase success criterion, state PASS/FAIL with evidence. Fix failures before reporting.
+2. **Git commits** — Split into logical units. Format:
+   ```
+   [Phase N] <what this unit does>
+   - bullet describing change
+   - bullet describing change
+   ```
+   Fix commits: `[Phase N] Fix: <what was wrong and what changed>`
+3. **Phase report** — Use exact structure: What was built, Self audit results, GitHub commits (URLs), Test output (raw, not summarized), Ready for audit.
+4. **Stop** — No more code until approved.
+
+## Coding rules (all phases)
+
+- Never skip phase tests; all must pass before reporting.
+- No placeholders, TODOs, or stubs unless plan defers to a later phase.
+- Module-level docstrings on every new file.
+- Structured JSON logging from Phase 0 onward in every component.
+- No hardcoded config — use `app/config.py` (Pydantic Settings).
+- Raise plan gaps in "Ready for audit", do not silently work around.
+
+## Phase order
+
+0 Scaffold → 1 Data layer → 2 Embeddings → 3 LLM/guardrail → 4 Detectors → 5 RiskScorer → 6 Orchestrator → 7 API → 8 Simulation → 9 Langfuse → 10 CI/Docker → 11 AWS deploy
+
+Do not reorder or combine phases.
