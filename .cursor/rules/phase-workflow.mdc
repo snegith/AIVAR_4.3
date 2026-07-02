@@ -3,34 +3,95 @@ description: Phase-by-phase build workflow for PS-4.3 adversarial detector
 alwaysApply: true
 ---
 
-# PS-4.3 Phase Workflow
+# PS-4.3 Phase Workflow — MANDATORY
 
-Build one phase per session from `PS-4.3-Implementation-Plan.md`. Complete exactly one phase, then stop and wait for human **"approved"** or **"proceed"** before Phase N+1.
+Read `PS-4.3-Implementation-Plan.md` and follow this workflow for every phase.
+
+## Phase-by-phase execution
+
+Build one phase at a time following the build sequence in the implementation plan. Complete **exactly one phase per session**. After finishing a phase, stop, report back, and wait for explicit approval before starting the next phase. Do **not** start Phase N+1 until the human says **"approved"** or **"proceed"**.
 
 ## End of every phase
 
-1. **Self-audit** — For each phase success criterion, state PASS/FAIL with evidence. Fix failures before reporting.
-2. **Git commits** — Split into logical units. Format:
-   ```
-   [Phase N] <what this unit does>
-   - bullet describing change
-   - bullet describing change
-   ```
-   Fix commits: `[Phase N] Fix: <what was wrong and what changed>`
-3. **Phase report** — Use exact structure: What was built, Self audit results, GitHub commits (URLs), Test output (raw, not summarized), Ready for audit.
-4. **Stop** — No more code until approved.
+### Step 1 — Self audit
+
+Before reporting back, audit your own work against the phase success criteria in the implementation plan. For every criterion, explicitly state whether it passed or failed and why. Do not say "looks good" — say **"Criterion X: PASS — here is the evidence"** or **"Criterion X: FAIL — here is what went wrong and what needs fixing."** If anything failed, fix it before reporting back. Only report back when every criterion for that phase passes.
+
+### Step 2 — GitHub commit
+
+After the self audit passes, commit the phase work to GitHub. Do not push one big commit. Split the phase into meaningful logical units and commit each unit separately with a clear, descriptive commit message. Follow this commit message format exactly:
+
+```
+[Phase N] <what this unit does>
+
+- bullet point describing the first thing this commit adds or changes
+- bullet point describing the second thing
+- bullet point for anything else relevant
+```
+
+Fix commit format: `[Phase N] Fix: <what was wrong and what was changed>`
+
+After all commits for the phase are pushed, share the GitHub commit URLs so the human can verify.
+
+### Step 3 — Phase report
+
+Post a structured phase report in this exact format:
+
+```
+## Phase N Complete — [Phase Name]
+
+### What was built
+- bullet list of every file created or modified, one line per file describing what it does
+
+### Self audit results
+- Criterion 1: PASS/FAIL — evidence or explanation
+- Criterion 2: PASS/FAIL — evidence or explanation
+- (all criteria from the implementation plan for this phase)
+
+### GitHub commits
+- [Phase N] <commit title> — <commit URL>
+- [Phase N] <commit title> — <commit URL>
+- (all commits for this phase)
+
+### Test output
+Paste the exact terminal output of running the phase test command here.
+Do not summarize it. Paste the raw output.
+
+### Ready for audit
+State any open questions or concerns you have about this phase before the human reviews it.
+If there are none, say "No open issues."
+```
+
+After posting the phase report, **stop completely**. Do not write any more code. Do not start the next phase.
+
+## Approval gate
+
+Wait for the human to review the report and either:
+
+- Say **"approved"** or **"proceed"** → start the next phase
+- Give feedback → address feedback, re-run audit, recommit if needed, post updated report
+- Say **"fix X"** → fix only X, recommit with fix commit, update report
 
 ## Coding rules (all phases)
 
-- Never skip phase tests; all must pass before reporting.
-- No placeholders, TODOs, or stubs unless plan defers to a later phase.
-- Module-level docstrings on every new file.
-- Structured JSON logging from Phase 0 onward in every component.
-- No hardcoded config — use `app/config.py` (Pydantic Settings).
-- Raise plan gaps in "Ready for audit", do not silently work around.
+- Never skip writing tests for a phase. If the implementation plan specifies a test for a phase, that test must exist and pass before you report back.
+- Never leave placeholder code, TODO comments, or stub implementations in phase deliverables unless the implementation plan explicitly defers something to a later phase.
+- Every file you create must have a module-level docstring explaining what it does and why it exists.
+- Structured JSON logging must be present from Phase 0 onward in every component you build.
+- Environment variables must never be hardcoded. Every configurable value goes through `app/config.py` (Pydantic Settings) from the moment it is first introduced.
+- If you realize mid-phase that the implementation plan has a gap or inconsistency, do not silently work around it. Raise it in the phase report under **"Ready for audit"**.
 
-## Phase order
+## Phase sequence (do not reorder or combine)
 
-0 Scaffold → 1 Data layer → 2 Embeddings → 3 LLM/guardrail → 4 Detectors → 5 RiskScorer → 6 Orchestrator → 7 API → 8 Simulation → 9 Langfuse → 10 CI/Docker → 11 AWS deploy
-
-Do not reorder or combine phases.
+0 — Repo scaffold, config, structured logging, docker-compose
+1 — SQLAlchemy models, Alembic migrations, pgvector, repositories
+2 — fastembed EmbeddingService, prompt normalization, template signatures
+3 — LLM provider, three-layer GuardrailEvaluator, capability tagger
+4 — Three independent detectors (probing, escalation, enumeration)
+5 — RiskScorer (decay, weighted combine, inactivity reset, alert logic)
+6 — DetectionOrchestrator (BackgroundTask, advisory lock, writes)
+7 — FastAPI endpoints, exception handlers, rate limiting, health/ready
+8 — Simulation harness (simulate.py, four personas, assertions)
+9 — Langfuse v2 mirror integration (langfuse_mirror.py, LANGFUSE_ENABLED flag)
+10 — Dockerfiles, GitHub Actions CI
+11 — AWS deployment (EC2 bootstrap, RDS, deploy scripts)
