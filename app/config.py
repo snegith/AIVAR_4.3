@@ -73,6 +73,31 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = Field(default=300, alias="RATE_LIMIT_WINDOW_SECONDS")
     rate_limit_burst: int = Field(default=20, alias="RATE_LIMIT_BURST")
 
+    # Probing detector
+    probing_dbscan_eps: float = Field(default=0.25, alias="PROBING_DBSCAN_EPS")
+    probing_dbscan_min_samples: int = Field(default=4, alias="PROBING_DBSCAN_MIN_SAMPLES")
+    probing_min_cluster_size: int = Field(default=5, alias="PROBING_MIN_CLUSTER_SIZE")
+    probing_min_mean_sim: float = Field(default=0.75, alias="PROBING_MIN_MEAN_SIM")
+    probing_max_mean_sim: float = Field(default=0.985, alias="PROBING_MAX_MEAN_SIM")
+    probing_min_block_rate: float = Field(default=0.6, alias="PROBING_MIN_BLOCK_RATE")
+    probing_sim_term_high: float = Field(default=0.97, alias="PROBING_SIM_TERM_HIGH")
+    probing_cluster_saturation: int = Field(default=20, alias="PROBING_CLUSTER_SATURATION")
+
+    # Escalation detector
+    escalation_min_rho: float = Field(default=0.6, alias="ESCALATION_MIN_RHO")
+    escalation_min_level_range: int = Field(default=2, alias="ESCALATION_MIN_LEVEL_RANGE")
+    escalation_min_nondec_frac: float = Field(default=0.7, alias="ESCALATION_MIN_NONDEC_FRAC")
+    escalation_min_sessions: int = Field(default=5, alias="ESCALATION_MIN_SESSIONS")
+    escalation_mk_min_sessions: int = Field(default=8, alias="ESCALATION_MK_MIN_SESSIONS")
+
+    # Enumeration detector
+    enumeration_min_group_size: int = Field(default=20, alias="ENUMERATION_MIN_GROUP_SIZE")
+    enumeration_min_dominance: float = Field(default=0.4, alias="ENUMERATION_MIN_DOMINANCE")
+    enumeration_min_regularity: float = Field(default=0.7, alias="ENUMERATION_MIN_REGULARITY")
+    enumeration_min_mean_sim: float = Field(default=0.9, alias="ENUMERATION_MIN_MEAN_SIM")
+    enumeration_min_coverage: float = Field(default=0.6, alias="ENUMERATION_MIN_COVERAGE")
+    enumeration_group_saturation: int = Field(default=50, alias="ENUMERATION_GROUP_SATURATION")
+
     @property
     def rate_limit_string(self) -> str:
         """slowapi limit string: N requests per window."""
