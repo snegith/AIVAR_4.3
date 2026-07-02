@@ -11,17 +11,17 @@ from app.config import get_settings
 
 
 def _user_id_key(request: object) -> str:
-    """Extract user_id from JSON body for per-user rate limiting."""
-    # Phase 7 will attach this to POST /v1/events; for now fall back to IP.
+    """Extract user_id from request state for per-user rate limiting."""
     try:
         from starlette.requests import Request
 
         if isinstance(request, Request):
-            # Body may not be parsed yet at key extraction time in all paths;
-            # header fallback supports health-check traffic without a body.
-            user_id = request.headers.get("X-User-Id")
-            if user_id:
+            user_id = getattr(request.state, "rate_limit_user_id", None)
+            if isinstance(user_id, str) and user_id:
                 return user_id
+            header_user_id = request.headers.get("X-User-Id")
+            if header_user_id:
+                return header_user_id
     except Exception:
         pass
     return get_remote_address(request)  # type: ignore[arg-type]
