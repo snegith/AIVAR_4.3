@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = Field(
-        default="postgresql://detector:detector@localhost:5432/detector_db",
+        default="postgresql://detector:detector@localhost:5433/detector_db",
         alias="DATABASE_URL",
     )
 

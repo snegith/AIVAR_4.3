@@ -11,6 +11,9 @@ docker compose up -d --build
 curl http://localhost:8000/health
 ```
 
+Postgres is exposed on host port **5433** (not 5432) to avoid conflicts with a
+local PostgreSQL install. Run migrations with `make migrate` or `alembic upgrade head`.
+
 Install Python deps and run tests:
 
 ```bash
