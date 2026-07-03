@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-type-test-simulate:
+    runs-on: ubuntu-latest
+    env:
+      LANGFUSE_ENABLED: "false"
+      LLM_DRY_RUN: "true"
+      DATABASE_URL: postgresql://detector:detector@localhost:5432/detector_db
+      ADMIN_KEY: change-me-in-production
+      SIMULATE_REQUEST_DELAY_MS: "100"
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: detector
+          POSTGRES_PASSWORD: detector
+          POSTGRES_DB: detector_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U detector -d detector_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Ruff
+        run: ruff check app sim simulate.py tests
+
+      - name: Mypy
+        run: mypy app
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Start API server
+        run: |
+          uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          for attempt in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8000/ready > /dev/null; then
+              echo "API ready after ${attempt} attempts"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API failed to become ready"
+          exit 1
+
+      - name: Pytest
+        run: pytest -q
+
+      - name: Simulation harness
+        run: python simulate.py --dry-run --seed 42 --request-delay-ms 100

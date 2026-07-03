@@ -1,4 +1,4 @@
-.PHONY: up down test logs migrate simulate langfuse-up
+.PHONY: up down test logs migrate simulate langfuse-up lint typecheck
 
 up:
 	docker compose up -d --build
@@ -8,6 +8,12 @@ down:
 
 migrate:
 	alembic upgrade head
+
+lint:
+	ruff check app sim simulate.py tests
+
+typecheck:
+	mypy app
 
 test:
 	pytest

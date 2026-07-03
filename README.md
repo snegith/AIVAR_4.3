@@ -71,6 +71,26 @@ to reach Langfuse on the compose network; browser links still use
 For production, migrate observability to Langfuse v3 on larger infrastructure;
 the detector is unaffected because Langfuse is mirror-only.
 
+## CI (Phase 10)
+
+GitHub Actions runs on every push/PR to `main`:
+
+- `ruff check` on `app/`, `sim/`, `simulate.py`, `tests/`
+- `mypy app`
+- `alembic upgrade head` against Postgres (pgvector)
+- `pytest` and `simulate.py --dry-run` with `LANGFUSE_ENABLED=false`
+
+Locally:
+
+```bash
+pip install -e ".[dev]"
+ruff check app sim simulate.py tests
+mypy app
+pytest
+```
+
+On Windows without `make`, use the commands above directly.
+
 ## Architecture
 
 See `PS-4.3-Implementation-Plan.md` for the full design. Source of truth is
