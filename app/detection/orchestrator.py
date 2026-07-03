@@ -141,14 +141,15 @@ class DetectionOrchestrator:
 
         existing = get_risk_profile(db, user_id)
         profile = ProfileSnapshot.from_row(existing) if existing is not None else None
-        last_event_at = (
-            existing.last_event_at
-            if existing is not None and existing.last_event_at is not None
-            else get_latest_user_event_at(db, user_id)
+        latest_event_at = get_latest_user_event_at(db, user_id)
+        last_event_at = latest_event_at or (
+            existing.last_event_at if existing is not None else None
         )
 
-        if profile is not None and self._scorer.is_inactivity_reset_needed(
-            profile.last_event_at, now
+        if (
+            profile is not None
+            and profile.last_event_at is not None
+            and self._scorer.is_inactivity_reset_needed(profile.last_event_at, now)
         ):
             outcome = self._scorer.evaluate(profile, None, now)
             upsert_risk_profile(
