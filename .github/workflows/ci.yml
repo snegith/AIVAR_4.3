@@ -14,7 +14,9 @@ jobs:
       LLM_DRY_RUN: "true"
       DATABASE_URL: postgresql://detector:detector@localhost:5432/detector_db
       ADMIN_KEY: change-me-in-production
+      SIMULATE_BASE_URL: http://127.0.0.1:8000
       SIMULATE_REQUEST_DELAY_MS: "100"
+      CI: "true"
 
     services:
       postgres:
@@ -56,8 +58,9 @@ jobs:
       - name: Start API server
         run: |
           uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          echo $! > /tmp/uvicorn.pid
           for attempt in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:8000/ready > /dev/null; then
+            if curl -sf "${SIMULATE_BASE_URL}/ready" > /dev/null; then
               echo "API ready after ${attempt} attempts"
               exit 0
             fi
@@ -69,5 +72,22 @@ jobs:
       - name: Pytest
         run: pytest -q
 
-      - name: Simulation harness
-        run: python simulate.py --dry-run --seed 42 --request-delay-ms 100
+      - name: Wait for API before simulation
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -sf "${SIMULATE_BASE_URL}/ready" > /dev/null; then
+              echo "API still healthy before simulate (attempt ${attempt})"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API not ready before simulation harness — refusing to run simulate.py"
+          exit 1
+
+      - name: Simulation harness (end-to-end gate)
+        run: |
+          python simulate.py \
+            --base-url "${SIMULATE_BASE_URL}" \
+            --dry-run \
+            --seed 42 \
+            --request-delay-ms "${SIMULATE_REQUEST_DELAY_MS}"

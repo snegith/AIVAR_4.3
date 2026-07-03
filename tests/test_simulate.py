@@ -11,6 +11,13 @@ import httpx
 import pytest
 
 
+def _ci_requires_live_api() -> bool:
+    """In CI, a missing API must fail the job — never silently skip simulate."""
+    return os.environ.get("CI", "").lower() in {"1", "true", "yes"} or os.environ.get(
+        "GITHUB_ACTIONS", ""
+    ).lower() == "true"
+
+
 def _wait_for_ready(base_url: str, timeout_seconds: float = 120.0) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
@@ -21,7 +28,10 @@ def _wait_for_ready(base_url: str, timeout_seconds: float = 120.0) -> None:
         except httpx.HTTPError:
             pass
         time.sleep(2.0)
-    pytest.skip(f"API not ready at {base_url}")
+    message = f"API not ready at {base_url}"
+    if _ci_requires_live_api():
+        pytest.fail(message)
+    pytest.skip(message)
 
 
 @pytest.fixture(scope="module")
