@@ -8,6 +8,7 @@ on any assertion failure (CI gate).
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -104,7 +105,7 @@ def _verify_must_alert(
     user_id: str,
     dominant: str,
     alert_threshold: float,
-) -> None:
+) -> float:
     risk = _fetch_risk(client, user_id)
     score = float(risk["risk_score"])
     _assert_row(
@@ -133,6 +134,7 @@ def _verify_must_alert(
         actual=str(pattern),
         passed=pattern == dominant,
     )
+    return score
 
 
 def _verify_must_not_alert(
@@ -142,7 +144,7 @@ def _verify_must_not_alert(
     persona: str,
     user_id: str,
     watch_threshold: float,
-) -> None:
+) -> float:
     risk = _fetch_risk(client, user_id)
     score = float(risk["risk_score"])
     _assert_row(
@@ -161,6 +163,7 @@ def _verify_must_not_alert(
         actual=str(_has_alert(client, user_id)),
         passed=not _has_alert(client, user_id),
     )
+    return score
 
 
 def _run_inactivity_reset_test(
@@ -221,6 +224,42 @@ def _print_table(results: list[CriterionResult]) -> None:
     print(f"Summary: {passed}/{len(results)} criteria passed")
 
 
+def _write_json_summary(
+    path: str,
+    *,
+    base_url: str,
+    seed: int,
+    thresholds: dict[str, float],
+    scores: dict[str, float],
+    results: list[CriterionResult],
+    passed: bool,
+) -> None:
+    """Write a machine-readable run summary for the post-deploy gate.
+
+    The Phase 11 post-deploy smoke test parses this instead of scraping the
+    human-readable table, so the Persona C false-positive gate stays robust.
+    """
+    summary = {
+        "base_url": base_url,
+        "seed": seed,
+        "thresholds": thresholds,
+        "personas": {name: round(score, 4) for name, score in scores.items()},
+        "criteria": [
+            {
+                "persona": r.persona,
+                "criterion": r.criterion,
+                "expected": r.expected,
+                "actual": r.actual,
+                "passed": r.passed,
+            }
+            for r in results
+        ],
+        "passed": passed,
+    }
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2, sort_keys=True)
+
+
 def _wait_for_ready(client: httpx.Client, timeout_seconds: float = 180.0) -> bool:
     """Poll /ready until the API accepts traffic."""
     deadline = time.time() + timeout_seconds
@@ -246,6 +285,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Use stub LLM (set LLM_DRY_RUN on API)",
     )
     parser.add_argument("--request-delay-ms", type=int, default=500)
+    parser.add_argument(
+        "--json-summary",
+        default=None,
+        help=(
+            "Write a machine-readable JSON summary (per-persona risk scores, "
+            "thresholds, overall pass) to this path. Used by the post-deploy gate."
+        ),
+    )
     args = parser.parse_args(argv)
 
     os.environ.setdefault("LANGFUSE_ENABLED", "false")
@@ -270,6 +317,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         thresholds = _fetch_config(client)
+        scores: dict[str, float] = {}
 
         for plan in plans:
             print(f"Running {plan.name} ({plan.user_id}) ...")
@@ -297,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
                     passed=False,
                 )
 
-        _verify_must_alert(
+        scores["A_boundary_prober"] = _verify_must_alert(
             client,
             results,
             persona="A_boundary_prober",
@@ -305,7 +353,7 @@ def main(argv: list[str] | None = None) -> int:
             dominant="probing",
             alert_threshold=thresholds["alert_threshold"],
         )
-        _verify_must_alert(
+        scores["B_data_scraper"] = _verify_must_alert(
             client,
             results,
             persona="B_data_scraper",
@@ -313,14 +361,14 @@ def main(argv: list[str] | None = None) -> int:
             dominant="enumeration",
             alert_threshold=thresholds["alert_threshold"],
         )
-        _verify_must_not_alert(
+        scores["C_normal_user"] = _verify_must_not_alert(
             client,
             results,
             persona="C_normal_user",
             user_id=plans[2].user_id,
             watch_threshold=thresholds["watch_threshold"],
         )
-        _verify_must_alert(
+        scores["D_privilege_escalator"] = _verify_must_alert(
             client,
             results,
             persona="D_privilege_escalator",
@@ -328,7 +376,7 @@ def main(argv: list[str] | None = None) -> int:
             dominant="escalation",
             alert_threshold=thresholds["alert_threshold"],
         )
-        _verify_must_not_alert(
+        scores["D_edge_user"] = _verify_must_not_alert(
             client,
             results,
             persona="D_edge_user",
@@ -341,7 +389,21 @@ def main(argv: list[str] | None = None) -> int:
     print("")
     _print_table(results)
     print(f"Elapsed: {elapsed:.1f}s (delay={args.request_delay_ms}ms per request)")
-    return 0 if all(r.passed for r in results) else 1
+    overall_passed = all(r.passed for r in results)
+
+    if args.json_summary:
+        _write_json_summary(
+            args.json_summary,
+            base_url=args.base_url,
+            seed=args.seed,
+            thresholds=thresholds,
+            scores=scores,
+            results=results,
+            passed=overall_passed,
+        )
+        print(f"Wrote JSON summary to {args.json_summary}")
+
+    return 0 if overall_passed else 1
 
 
 if __name__ == "__main__":
