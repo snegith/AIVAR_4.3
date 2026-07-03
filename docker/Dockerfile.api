@@ -13,6 +13,14 @@ COPY app ./app
 RUN pip install --upgrade pip && pip install -e ".[dev]" \
     && python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5')"
 
+# The simulation harness (pure-python, httpx-only) is baked in so the
+# post-deploy smoke gate can run it via `docker compose exec` with no host-side
+# Python dependency. simulate.py imports only httpx + the sim/ package.
+COPY simulate.py ./simulate.py
+COPY sim ./sim
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \

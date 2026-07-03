@@ -1,0 +1,70 @@
+# EC2 (free-tier) deployment: detector API + self-hosted Langfuse v2.
+#
+# Both services point at the SAME RDS db.t3.micro instance but different logical
+# databases: the API uses `detector_db` (source of truth, pgvector); Langfuse v2
+# uses `langfuse_db` (its own store). No Postgres runs on this box.
+#
+# Memory reality on a 1GB t3.micro: the detector (fastembed + SQLAlchemy) peaks
+# near 900MB-1.1GB and Langfuse v2 (Next.js) peaks 600-700MB. Mitigations:
+#   - `mem_limit: 512m` caps Langfuse and forces it to swap its own cold pages.
+#   - `ec2_bootstrap.sh` adds a 2GB swap file and sets vm.swappiness=10.
+#   - Run `simulate.py` BEFORE opening the Langfuse UI (see README/demo notes).
+#
+# All secrets/config come from the chmod-600 `.env` file written by
+# `ec2_bootstrap.sh`; nothing is hardcoded here.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    image: adversarial-detector-api:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # detector_db on RDS (source of truth, pgvector)
+      DATABASE_URL: ${DATABASE_URL}
+      # Langfuse mirror: SDK ingests over the compose network; browser links use
+      # the public host set in LANGFUSE_HOST (.env -> http://EC2_PUBLIC_IP:3000).
+      LANGFUSE_INGEST_HOST: http://langfuse:3000
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  langfuse:
+    image: langfuse/langfuse:2
+    restart: unless-stopped
+    # Cap Langfuse so it cannot starve the detector's hot embedding memory.
+    mem_limit: 512m
+    ports:
+      - "3000:3000"
+    environment:
+      # langfuse_db on the SAME RDS instance (separate logical database).
+      DATABASE_URL: ${LANGFUSE_DATABASE_URL}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      SALT: ${SALT}
+      TELEMETRY_ENABLED: "false"
+      # Pre-seed API keys on first boot so no manual UI step is ever required.
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - require('http').get('http://127.0.0.1:3000/api/public/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
