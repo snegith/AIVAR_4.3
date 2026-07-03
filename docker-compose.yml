@@ -26,6 +26,7 @@ services:
       - .env.example
     environment:
       DATABASE_URL: postgresql://detector:detector@postgres:5432/detector_db
+      LANGFUSE_INGEST_HOST: http://langfuse:3000
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,6 +35,25 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  langfuse:
+    image: langfuse/langfuse:2
+    profiles: ["langfuse"]
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.example
+    environment:
+      DATABASE_URL: postgresql://detector:detector@postgres:5432/langfuse_db
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: dev-nextauth-secret-change-me
+      SALT: dev-salt-change-me
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-placeholder
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-placeholder
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 512m
 
 volumes:
   postgres_data:

@@ -1,4 +1,4 @@
-.PHONY: up down test logs migrate simulate
+.PHONY: up down test logs migrate simulate langfuse-up
 
 up:
 	docker compose up -d --build
@@ -14,6 +14,9 @@ test:
 
 simulate:
 	python simulate.py --dry-run --seed 42
+
+langfuse-up:
+	docker compose --profile langfuse up -d --build
 
 logs:
 	docker compose logs -f api postgres
