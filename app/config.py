@@ -52,8 +52,15 @@ class Settings(BaseSettings):
     # Langfuse v2 mirror (optional)
     langfuse_enabled: bool = Field(default=False, alias="LANGFUSE_ENABLED")
     langfuse_host: str = Field(default="http://localhost:3000", alias="LANGFUSE_HOST")
+    langfuse_ingest_host: str | None = Field(default=None, alias="LANGFUSE_INGEST_HOST")
     langfuse_public_key: str | None = Field(default=None, alias="LANGFUSE_PUBLIC_KEY")
     langfuse_secret_key: str | None = Field(default=None, alias="LANGFUSE_SECRET_KEY")
+
+    @property
+    def langfuse_sdk_host(self) -> str:
+        """Host URL for the Langfuse SDK (may differ from browser UI host in Docker)."""
+        base = self.langfuse_ingest_host or self.langfuse_host
+        return base.rstrip("/")
 
     # Detection windows
     window_sessions: int = Field(default=30, alias="WINDOW_SESSIONS")

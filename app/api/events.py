@@ -18,6 +18,7 @@ from app.embeddings.service import EmbeddingService
 from app.exceptions import LLMProviderError
 from app.llm.guardrail import GuardrailEvaluator
 from app.llm.provider import LLMProvider
+from app.integrations.langfuse_mirror import MirrorPayload, mirror_interaction_to_langfuse
 from app.logging import get_logger
 from app.ratelimit import limiter
 from app.db.repositories import (
@@ -103,6 +104,23 @@ async def create_event(
     session.last_event_at = now
     session.interaction_count = (session.interaction_count or 0) + 1
     db.flush()
+
+    trace_id = mirror_interaction_to_langfuse(
+        MirrorPayload(
+            interaction_id=interaction.id,
+            session_id=session.id,
+            user_id=body.user_id,
+            prompt=body.prompt,
+            response=llm_response.text,
+            guardrail_outcome=guardrail.outcome,
+            capability_level=capability.level,
+            model=llm_response.model,
+            is_degraded=llm_response.is_degraded,
+        )
+    )
+    if trace_id is not None:
+        interaction.langfuse_trace_id = trace_id
+
     db.commit()
 
     background_tasks.add_task(run_detection_for_user, body.user_id)
@@ -128,5 +146,5 @@ async def create_event(
         response_preview=preview,
         risk_score=risk_score,
         status=risk_status,
-        langfuse_trace_id=None,
+        langfuse_trace_id=trace_id,
     )
