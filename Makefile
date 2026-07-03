@@ -1,4 +1,4 @@
-.PHONY: up down test logs migrate
+.PHONY: up down test logs migrate simulate
 
 up:
 	docker compose up -d --build
@@ -11,6 +11,9 @@ migrate:
 
 test:
 	pytest
+
+simulate:
+	python simulate.py --dry-run --seed 42
 
 logs:
 	docker compose logs -f api postgres

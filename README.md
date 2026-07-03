@@ -21,6 +21,24 @@ pip install -e ".[dev]"
 pytest
 ```
 
+## Simulation harness (Phase 8)
+
+With the API running (`docker compose up -d`), drive all four personas and
+assert risk/alert outcomes:
+
+```bash
+make simulate
+# or: python simulate.py --dry-run --seed 42
+```
+
+Flags: `--base-url` (default `http://localhost:8000`), `--dry-run` (stub LLM),
+`--request-delay-ms` (default **500** ms between requests).
+
+At the default 500 ms delay, a full run takes approximately **75 seconds**
+(~160 cross-session requests plus admin recompute and inactivity-reset checks).
+The harness prints a pass/fail table for every persona criterion and exits
+non-zero on any failure (CI gate).
+
 ## Architecture
 
 See `PS-4.3-Implementation-Plan.md` for the full design. Source of truth is

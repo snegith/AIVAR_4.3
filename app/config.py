@@ -17,6 +17,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     # Application
@@ -63,7 +64,7 @@ class Settings(BaseSettings):
     alert_threshold: float = Field(default=70.0, alias="ALERT_THRESHOLD")
     watch_threshold: float = Field(default=45.0, alias="WATCH_THRESHOLD")
     risk_half_life_seconds: float = Field(default=86400.0, alias="RISK_HALF_LIFE_SECONDS")
-    risk_alpha: float = Field(default=0.6, alias="RISK_ALPHA")
+    risk_alpha: float = Field(default=0.165, alias="RISK_ALPHA")
     weight_probing: float = Field(default=0.35, alias="WEIGHT_PROBING")
     weight_escalation: float = Field(default=0.35, alias="WEIGHT_ESCALATION")
     weight_enumeration: float = Field(default=0.30, alias="WEIGHT_ENUMERATION")
