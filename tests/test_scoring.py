@@ -8,9 +8,9 @@ from decimal import Decimal
 import pytest
 
 from app.config import Settings
+from app.db.repositories import RiskProfileUpdate, upsert_risk_profile
 from app.detectors import enumeration, escalation, probing
 from app.detectors.base import DetectorResult, gated_signal
-from app.db.repositories import RiskProfileUpdate, upsert_risk_profile
 from app.scoring.risk_scorer import ProfileSnapshot, RiskScorer, ScoreSignals
 from tests.detector_helpers import (
     make_enumeration_benign_window,
@@ -113,7 +113,6 @@ def test_accumulation_over_cycles_reaches_alert_threshold() -> None:
 
 def test_accumulation_capped_at_100() -> None:
     scorer = _scorer(risk_alpha=1.0)
-    signals = ScoreSignals(probing=1.0, escalation=1.0, enumeration=1.0)
     new_score = scorer.accumulate(previous_score=90.0, instantaneous_score=100.0, dt_seconds=0.0)
     assert new_score == 100.0
 

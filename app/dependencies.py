@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends, Header, Request
 from sqlalchemy.orm import Session
@@ -31,7 +31,7 @@ def get_embedding_service(request: Request) -> EmbeddingService:
     service = getattr(request.app.state, "embedding_service", None)
     if service is None:
         raise RuntimeError("Embedding service is not initialized")
-    return service
+    return cast(EmbeddingService, service)
 
 
 def get_llm(*, dry_run: bool | None = None) -> LLMProvider:

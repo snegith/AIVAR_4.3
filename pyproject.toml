@@ -48,9 +48,15 @@ asyncio_mode = "auto"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = ["alembic"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["E501"]
+"app/db/models.py" = ["E501"]
+"app/scoring/risk_scorer.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

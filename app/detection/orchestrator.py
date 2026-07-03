@@ -17,14 +17,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.db.models import AlertRow, DetectedPatternRow, InteractionRow, UserRiskProfileRow
+from app.db.models import InteractionRow
 from app.db.repositories import (
     InteractionWindow,
     acquire_user_advisory_lock,
-    create_alert,
-    create_detected_pattern,
     count_user_interactions,
     count_user_sessions,
+    create_alert,
+    create_detected_pattern,
     get_interactions_window,
     get_latest_user_event_at,
     get_risk_profile,

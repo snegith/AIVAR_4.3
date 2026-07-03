@@ -20,7 +20,7 @@ async def user_id_rate_limit_middleware(
         async def receive() -> dict[str, object]:
             return {"type": "http.request", "body": body, "more_body": False}
 
-        request._receive = receive  # type: ignore[attr-defined]
+        request._receive = receive
         try:
             payload = json.loads(body.decode("utf-8"))
             user_id = payload.get("user_id")

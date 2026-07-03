@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import cast
 
 from fastapi import FastAPI
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from app.api import admin, alerts, events, health, patterns, risk
 from app.config import get_settings
@@ -53,7 +53,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+    app.add_exception_handler(
+        RateLimitExceeded,
+        cast(Callable[[Request, Exception], Response], _rate_limit_handler),
+    )
     register_exception_handlers(app)
     app.middleware("http")(user_id_rate_limit_middleware)
 

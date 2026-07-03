@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import Settings, get_settings
+from app.config import get_settings
 from app.dependencies import get_db
 from app.embeddings.service import EmbeddingService
 
@@ -48,8 +48,12 @@ def ready(
 
     if settings.langfuse_enabled:
         try:
-            response = httpx.get(f"{settings.langfuse_host.rstrip('/')}/api/public/health", timeout=2.0)
-            checks["langfuse"] = "ok" if response.status_code < 500 else f"error: {response.status_code}"
+            health_url = f"{settings.langfuse_host.rstrip('/')}/api/public/health"
+            response = httpx.get(health_url, timeout=2.0)
+            if response.status_code < 500:
+                checks["langfuse"] = "ok"
+            else:
+                checks["langfuse"] = f"error: {response.status_code}"
         except Exception as exc:
             checks["langfuse"] = f"error: {exc}"
     else:
@@ -57,4 +61,8 @@ def ready(
 
     failed = [name for name, value in checks.items() if value != "ok" and value != "disabled"]
     status_code = status.HTTP_200_OK if not failed else status.HTTP_503_SERVICE_UNAVAILABLE
-    return JSONResponse(status_code=status_code, content={"status": "ready" if not failed else "degraded", "checks": checks})
+    body = {
+        "status": "ready" if not failed else "degraded",
+        "checks": checks,
+    }
+    return JSONResponse(status_code=status_code, content=body)

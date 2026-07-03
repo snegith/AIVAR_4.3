@@ -10,22 +10,22 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.db.repositories import (
+    create_interaction,
+    get_risk_profile,
+    resolve_or_create_session,
+)
 from app.dependencies import get_db, get_embedding_service, get_llm
 from app.detection.orchestrator import run_detection_for_user
 from app.detectors.capability import CapabilityTagger
 from app.detectors.normalize import normalize_and_sign
 from app.embeddings.service import EmbeddingService
 from app.exceptions import LLMProviderError
+from app.integrations.langfuse_mirror import MirrorPayload, mirror_interaction_to_langfuse
 from app.llm.guardrail import GuardrailEvaluator
 from app.llm.provider import LLMProvider
-from app.integrations.langfuse_mirror import MirrorPayload, mirror_interaction_to_langfuse
 from app.logging import get_logger
 from app.ratelimit import limiter
-from app.db.repositories import (
-    create_interaction,
-    get_risk_profile,
-    resolve_or_create_session,
-)
 from app.schemas.events import EventCreateRequest, EventCreateResponse
 
 logger = get_logger(__name__)

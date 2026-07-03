@@ -6,14 +6,15 @@ import os
 from collections.abc import Generator
 
 import pytest
-from alembic import command
 from alembic.config import Config
 from pgvector.psycopg2 import register_vector
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from alembic import command
 from app.config import Settings, get_settings
+from app.llm.stub_provider import StubLLMProvider
 
 DEFAULT_DATABASE_URL = "postgresql://detector:detector@localhost:5433/detector_db"
 
@@ -48,10 +49,8 @@ def settings() -> Settings:
 
 
 @pytest.fixture
-def stub_llm() -> "StubLLMProvider":
+def stub_llm() -> StubLLMProvider:
     """Deterministic stub LLM for guardrail and capability tests."""
-    from app.llm.stub_provider import StubLLMProvider
-
     return StubLLMProvider()
 
 

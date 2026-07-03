@@ -9,6 +9,7 @@ from app.detectors.base import (
     DetectionWindow,
     DetectorConfig,
     DetectorResult,
+    WindowInteraction,
     gated_signal,
     is_arithmetic_progression,
     mean_pairwise_cosine_similarity,
@@ -36,7 +37,7 @@ def detect(window: DetectionWindow, cfg: DetectorConfig | None = None) -> Detect
     if window_total == 0:
         return DetectorResult(signal=0.0, fired=False, evidence={"reason": "empty_window"})
 
-    groups: dict[str, list] = defaultdict(list)
+    groups: dict[str, list[WindowInteraction]] = defaultdict(list)
     for row in window.interactions:
         if row.template_signature:
             groups[row.template_signature].append(row)

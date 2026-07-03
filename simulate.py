@@ -240,7 +240,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="PS-4.3 four-persona simulation harness")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--base-url", default="http://localhost:8000")
-    parser.add_argument("--dry-run", action="store_true", help="Use stub LLM (set LLM_DRY_RUN on API)")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Use stub LLM (set LLM_DRY_RUN on API)",
+    )
     parser.add_argument("--request-delay-ms", type=int, default=500)
     args = parser.parse_args(argv)
 
