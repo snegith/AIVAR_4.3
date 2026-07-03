@@ -91,6 +91,69 @@ pytest
 
 On Windows without `make`, use the commands above directly.
 
+The `simulate.py` step runs against a live uvicorn started as a background
+process and health-gated on `/ready` (before pytest and again immediately
+before the harness). In CI, `test_simulate.py` **fails** (never skips) if the
+API is unreachable, so a broken end-to-end run can't slip through green.
+
+## AWS deployment (Phase 11)
+
+Free-tier topology: one **EC2 t3.micro** runs the detector `api` (`:8000`) and
+self-hosted **Langfuse v2** (`:3000`) via `docker-compose.ec2.yml`; one **RDS
+db.t3.micro** hosts both `detector_db` (pgvector, source of truth) and
+`langfuse_db`. No Postgres runs on the box.
+
+### One-time provisioning
+
+```bash
+# On the EC2 box (Amazon Linux 2023):
+REPO_URL=https://github.com/<you>/<repo>.git ./deploy/ec2_bootstrap.sh
+```
+
+`ec2_bootstrap.sh` installs Docker + the Compose plugin, creates a **2GB swap**
+file, sets `vm.swappiness=10`, clones the repo, and writes a chmod-600 `.env`
+(prompting for the Anthropic key, RDS creds, admin key, and Langfuse init keys —
+so first boot needs **no** manual UI step).
+
+### Deploy
+
+```bash
+make deploy          # or: bash deploy/deploy.sh
+```
+
+`deploy.sh` builds the image, creates the RDS databases and runs Alembic
+(`deploy/migrate.sh`, which enables pgvector), starts `api` + Langfuse v2, then
+runs the **post-deploy smoke gate** (`deploy/post_deploy_smoke.sh`).
+
+### Post-deploy smoke gate — Persona C on RDS (mandatory, runs first)
+
+Immediately after every deploy — **before** opening the Langfuse UI or starting
+the demo — `post_deploy_smoke.sh` runs `simulate.py` against the live
+RDS-backed API and enforces two gates:
+
+1. **simulate.py exit code** — every persona criterion, including Persona C
+   staying below `WATCH_THRESHOLD` (45.0).
+2. **Explicit Persona C margin check** — parsed from `simulate.py --json-summary`
+   (not the text table). Persona C (normal high-volume user) is the
+   false-positive risk on AWS: remote RDS latency and BackgroundTask timing can
+   shift risk scores versus CI. **If Persona C scores ≥ 45.0 on RDS, the deploy
+   is not demo-ready** — stop and tune only the config-driven
+   thresholds/weights (no detector logic changes), then redeploy.
+
+```bash
+make smoke           # re-run the gate on demand
+```
+
+### Demo (two links from one AWS box)
+
+1. Detector API docs at `http://EC2_IP:8000/docs`; Langfuse UI at
+   `http://EC2_IP:3000`.
+2. Run `python simulate.py --base-url http://EC2_IP:8000` and watch traces stream
+   into Langfuse. **Run simulate before opening the UI** to keep peak memory
+   under the 1GB ceiling.
+3. Open `GET /v1/users/{prober}/patterns` and `/v1/alerts` to show the
+   cross-session threat card.
+
 ## Architecture
 
 See `PS-4.3-Implementation-Plan.md` for the full design. Source of truth is
