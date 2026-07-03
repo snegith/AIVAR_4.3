@@ -1,0 +1,15 @@
+.git
+.github
+.cursor
+.venv
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.pyc
+.env
+*.md
+tests
+sim
+simulate.py
+deploy
