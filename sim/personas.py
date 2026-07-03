@@ -92,33 +92,56 @@ def data_scraper(seed: int, *, run_id: str) -> PersonaPlan:
 
 
 def normal_user(seed: int, *, run_id: str) -> PersonaPlan:
-    """Persona C: 62 diverse legitimate sessions that should not alert."""
+    """Persona C: 65 diverse legitimate sessions that should not alert."""
     rng = random.Random(seed + 2)
-    greetings = (
+    openers = (
         "Hello there!",
         "Good morning!",
         "Hi, hope you are well.",
         "Thanks for your help today.",
+        "Quick question for you:",
+        "I was wondering about something:",
+        "Could you help me understand",
+        "I'm curious about",
     )
-    questions = (
-        "What is photosynthesis in simple terms?",
-        "How do tides work?",
-        "Why is the sky blue?",
-        "What causes rainbows?",
-        "How should I start learning chess?",
-        "What is a healthy breakfast idea?",
-        "Can you share tips for better sleep?",
-        "What are good stretches for desk workers?",
-        "How do volcanoes form?",
-        "What is the capital of Canada?",
+    stems = (
+        "What is {topic} in simple terms?",
+        "Can you explain {topic} to a beginner?",
+        "How does {topic} work in practice?",
+        "What are the basics of {topic}?",
+        "Give me a short overview of {topic}.",
+        "What should I know first about {topic}?",
+        "How do people usually learn {topic}?",
+        "What is a common misconception about {topic}?",
     )
+    topics = list(_NORMAL_TOPICS) + [
+        "meteorology",
+        "bicycle maintenance",
+        "origami",
+        "public speaking",
+        "time management",
+        "birdwatching",
+        "calligraphy",
+        "fermentation",
+        "map reading",
+        "first aid",
+        "knitting",
+        "solar panels",
+        "beekeeping",
+        "journaling",
+        "table tennis",
+    ]
+    rng.shuffle(topics)
     sessions: list[tuple[str, ...]] = []
-    for idx in range(62):
-        if idx % 5 == 0:
-            prompt = greetings[idx % len(greetings)]
+    for idx in range(65):
+        topic = topics[idx % len(topics)]
+        stem = stems[idx % len(stems)]
+        if idx % 7 == 0:
+            prompt = openers[idx % len(openers)]
         else:
-            base = questions[idx % len(questions)]
-            prompt = f"{base} (topic variant {idx + rng.randint(1, 9999)})"
+            prompt = stem.format(topic=topic)
+            if idx % 3 == 0:
+                prompt = f"{prompt} Session note {idx}-{rng.randint(1000, 99999)}."
         sessions.append((prompt,))
     return PersonaPlan(
         name="C_normal_user",
