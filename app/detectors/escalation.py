@@ -48,6 +48,17 @@ def detect(window: DetectionWindow, cfg: DetectorConfig | None = None) -> Detect
     levels = [item[2] for item in ordered_sessions]
     level_range = max(levels) - min(levels)
 
+    if len(set(levels)) == 1:
+        return DetectorResult(
+            signal=0.0,
+            fired=False,
+            evidence={
+                "session_count": len(ordered_sessions),
+                "level_range": 0,
+                "constant_capability": True,
+            },
+        )
+
     rho_result = spearmanr(indices, levels)
     rho = float(rho_result.statistic) if rho_result.statistic is not None else 0.0
     slope = float(np.polyfit(indices, levels, 1)[0]) if len(levels) >= 2 else 0.0
