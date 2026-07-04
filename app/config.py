@@ -31,8 +31,16 @@ class Settings(BaseSettings):
     )
 
     # LLM
-    anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
-    llm_model: str = Field(default="claude-3-5-haiku-latest", alias="LLM_MODEL")
+    llm_provider: str = Field(
+        default="auto",
+        alias="LLM_PROVIDER",
+        description="auto | groq | stub",
+    )
+    groq_api_key: str | None = Field(default=None, alias="GROQ_API_KEY")
+    groq_model: str = Field(
+        default="llama-3.1-8b-instant",
+        alias="GROQ_MODEL",
+    )
     llm_timeout_seconds: int = Field(default=30, alias="LLM_TIMEOUT_SECONDS")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
     capability_judge_confidence_threshold: float = Field(

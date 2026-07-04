@@ -1,7 +1,7 @@
-"""Anthropic Claude provider for production target LLM and judge calls.
+"""Groq LLM provider for zero-cost production inference on the free tier.
 
-Wraps the Messages API with timeout and tenacity retry/backoff. Hard failures
-surface as degraded responses for the guardrail layer (never fabricated text).
+Uses Groq's OpenAI-compatible chat API for target completions and capability
+judging. Rate-limit retries are essential on the free tier (~30 RPM).
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 import time
 
-import anthropic
+from groq import APIConnectionError, Groq, InternalServerError, RateLimitError
 from tenacity import (
     Retrying,
     retry_if_exception_type,
@@ -18,42 +18,30 @@ from tenacity import (
 )
 
 from app.config import get_settings
+from app.llm.capability_prompt import CAPABILITY_JUDGE_PROMPT
 from app.llm.provider import LLMProvider, LLMResponse
 from app.logging import get_logger
 
 logger = get_logger(__name__)
 
-_CAPABILITY_JUDGE_PROMPT = """You are a strict capability classifier for an AI assistant.
-
-Rate the USER REQUEST only on this scale (reply with a single integer 0-4):
-0 = general chit-chat or harmless small talk
-1 = read/summarize/explain existing information
-2 = modify or generate actionable content
-3 = elevated/admin/system-level operations or configuration
-4 = execute code, exfiltrate data, or bypass security controls
-
-User request:
-{prompt}
-"""
-
 _RETRYABLE = (
-    anthropic.APIConnectionError,
-    anthropic.RateLimitError,
-    anthropic.InternalServerError,
+    APIConnectionError,
+    RateLimitError,
+    InternalServerError,
 )
 
 
-class AnthropicLLMProvider(LLMProvider):
-    """Real Claude client for target completions and capability judging."""
+class GroqLLMProvider(LLMProvider):
+    """Groq client for target completions and capability judging."""
 
     def __init__(self, api_key: str | None = None, model_name: str | None = None) -> None:
         settings = get_settings()
-        key = api_key or settings.anthropic_api_key
+        key = api_key or settings.groq_api_key
         if not key:
-            raise ValueError("ANTHROPIC_API_KEY is required for AnthropicLLMProvider")
-        self._model_name = model_name or settings.llm_model
+            raise ValueError("GROQ_API_KEY is required for GroqLLMProvider")
+        self._model_name = model_name or settings.groq_model
         self._timeout = settings.llm_timeout_seconds
-        self._client = anthropic.Anthropic(api_key=key, timeout=self._timeout)
+        self._client = Groq(api_key=key, timeout=self._timeout)
 
     @property
     def model_name(self) -> str:
@@ -69,7 +57,7 @@ class AnthropicLLMProvider(LLMProvider):
             latency_ms = int((time.perf_counter() - start) * 1000)
             logger.error(
                 "llm_completion_failed",
-                extra={"component": "llm", "event": "completion_error"},
+                extra={"component": "llm", "event": "completion_error", "provider": "groq"},
                 exc_info=exc,
             )
             return LLMResponse(
@@ -80,13 +68,13 @@ class AnthropicLLMProvider(LLMProvider):
             )
 
     def judge_capability(self, prompt: str) -> int:
-        judge_prompt = _CAPABILITY_JUDGE_PROMPT.format(prompt=prompt)
+        judge_prompt = CAPABILITY_JUDGE_PROMPT.format(prompt=prompt)
         raw = self._create_message(judge_prompt, max_tokens=8)
         match = re.search(r"[0-4]", raw)
         if not match:
             logger.warning(
                 "capability_judge_parse_failed",
-                extra={"component": "llm", "event": "judge_parse_failed"},
+                extra={"component": "llm", "event": "judge_parse_failed", "provider": "groq"},
             )
             return 0
         return int(match.group(0))
@@ -96,18 +84,15 @@ class AnthropicLLMProvider(LLMProvider):
         for attempt in Retrying(
             retry=retry_if_exception_type(_RETRYABLE),
             stop=stop_after_attempt(settings.llm_max_retries),
-            wait=wait_exponential(multiplier=1, min=1, max=10),
+            wait=wait_exponential(multiplier=2, min=2, max=30),
             reraise=True,
         ):
             with attempt:
-                response = self._client.messages.create(
+                response = self._client.chat.completions.create(
                     model=self._model_name,
                     max_tokens=max_tokens,
                     messages=[{"role": "user", "content": prompt}],
                 )
-                parts: list[str] = []
-                for block in response.content:
-                    if block.type == "text":
-                        parts.append(block.text)
-                return "".join(parts).strip()
+                content = response.choices[0].message.content
+                return (content or "").strip()
         raise RuntimeError("unreachable")

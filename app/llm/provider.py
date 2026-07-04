@@ -1,7 +1,7 @@
 """LLMProvider interface for target completions and capability judging.
 
-Abstracts Anthropic Claude (production) and a deterministic stub (dev/CI only)
-so ingestion and detectors can swap backends without changing call sites.
+Abstracts Groq (production) and a deterministic stub (dev/CI only) so ingestion
+and detectors can swap backends without changing call sites.
 """
 
 from __future__ import annotations
