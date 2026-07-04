@@ -31,7 +31,23 @@ cd "$REPO_ROOT"
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.ec2.yml}"
 SMOKE_SEED="${SMOKE_SEED:-42}"
-SMOKE_DELAY_MS="${SMOKE_DELAY_MS:-500}"
+# Default delay: 3000ms on Groq free tier (~30 RPM), else 500ms.
+if [[ -n "${SMOKE_DELAY_MS:-}" ]]; then
+  :
+elif [[ -f .env ]] && grep -qE '^LLM_PROVIDER=groq' .env; then
+  SMOKE_DELAY_MS=3000
+elif [[ -f .env ]] && grep -qE '^GROQ_API_KEY=.+' .env; then
+  SMOKE_DELAY_MS=3000
+else
+  SMOKE_DELAY_MS=500
+fi
+# Allow .env to override when SMOKE_DELAY_MS is not set explicitly.
+if [[ -z "${SMOKE_DELAY_MS_SET:-}" && -f .env ]]; then
+  env_delay="$(grep -E '^SIMULATE_REQUEST_DELAY_MS=' .env | head -n1 | cut -d= -f2-)"
+  if [[ -n "$env_delay" ]]; then
+    SMOKE_DELAY_MS="$env_delay"
+  fi
+fi
 SMOKE_TARGET_URL="${SMOKE_TARGET_URL:-http://127.0.0.1:8000}"
 SMOKE_READY_ATTEMPTS="${SMOKE_READY_ATTEMPTS:-60}"
 SUMMARY_PATH="/tmp/ps43_smoke_summary.json"

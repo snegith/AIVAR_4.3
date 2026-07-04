@@ -118,7 +118,7 @@ else
   RDS_PORT_IN="${RDS_PORT:-5432}"
   RDS_USER_IN="$(prompt RDS_USER 'RDS master username')"
   RDS_PASSWORD_IN="$(prompt RDS_PASSWORD 'RDS master password' secret)"
-  ANTHROPIC_API_KEY_IN="$(prompt ANTHROPIC_API_KEY 'Anthropic API key' secret)"
+  GROQ_API_KEY_IN="$(prompt GROQ_API_KEY 'Groq API key (free tier at console.groq.com)' secret)"
   ADMIN_KEY_IN="$(prompt ADMIN_KEY 'Admin API key (X-Admin-Key)' secret)"
   LF_PUB_IN="${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-pk-lf-$(gen_secret | cut -c1-24)}"
   LF_SEC_IN="${LANGFUSE_INIT_PROJECT_SECRET_KEY:-sk-lf-$(gen_secret | cut -c1-24)}"
@@ -138,9 +138,12 @@ LOG_LEVEL=INFO
 DATABASE_URL=${DETECTOR_URL}
 LANGFUSE_DATABASE_URL=${LANGFUSE_URL}
 
-# LLM (real Claude in production)
-ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY_IN}
-LLM_MODEL=claude-3-5-haiku-latest
+# LLM (Groq free tier)
+LLM_PROVIDER=groq
+GROQ_API_KEY=${GROQ_API_KEY_IN}
+GROQ_MODEL=llama-3.1-8b-instant
+# Groq free tier ~30 RPM — pace simulate to stay under rate limits (~9 min/run).
+SIMULATE_REQUEST_DELAY_MS=3000
 
 EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
 

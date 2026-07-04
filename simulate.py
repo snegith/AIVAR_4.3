@@ -284,7 +284,8 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Use stub LLM (set LLM_DRY_RUN on API)",
     )
-    parser.add_argument("--request-delay-ms", type=int, default=500)
+    default_delay = int(os.environ.get("SIMULATE_REQUEST_DELAY_MS", "500"))
+    parser.add_argument("--request-delay-ms", type=int, default=default_delay)
     parser.add_argument(
         "--json-summary",
         default=None,
