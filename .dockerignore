@@ -1,15 +1,23 @@
+# VCS / editor / local tooling
 .git
 .github
 .cursor
 .venv
+
+# Python caches and build artifacts
 __pycache__
 .pytest_cache
 .mypy_cache
 .ruff_cache
 *.pyc
+adversarial_detector.egg-info
+
+# Secrets (injected at runtime via env_file on EC2 / compose)
 .env
-*.md
+
+# Docs not needed in the api image (README.md is required by pyproject.toml)
+PS-4.3-Implementation-Plan.md
+
+# Dev-only: tests and host deploy scripts (simulate.py + sim/ are baked in for smoke gate)
 tests
-sim
-simulate.py
 deploy
