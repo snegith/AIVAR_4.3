@@ -7,7 +7,6 @@ import os
 import pytest
 
 from app.detectors.capability import CapabilityTagger
-from app.llm.anthropic_provider import AnthropicLLMProvider
 from app.llm.factory import get_llm_provider
 from app.llm.guardrail import GuardrailEvaluator
 from app.llm.stub_provider import StubLLMProvider
@@ -57,17 +56,43 @@ def test_guardrail_flags_degraded_llm_response(guardrail: GuardrailEvaluator) ->
 def test_factory_returns_stub_without_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.config import get_settings
 
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("GROQ_API_KEY", "")
     monkeypatch.setenv("LLM_DRY_RUN", "true")
     get_settings.cache_clear()
     provider = get_llm_provider()
     assert isinstance(provider, StubLLMProvider)
 
 
-@pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY not set")
-def test_real_anthropic_completion() -> None:
-    """Optional live Claude call when API key is present."""
-    provider = AnthropicLLMProvider()
+def test_factory_returns_groq_when_key_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import get_settings
+    from app.llm.groq_provider import GroqLLMProvider
+
+    monkeypatch.setenv("LLM_DRY_RUN", "")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_key")
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    get_settings.cache_clear()
+    provider = get_llm_provider()
+    assert isinstance(provider, GroqLLMProvider)
+
+
+def test_factory_auto_selects_groq_when_key_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import get_settings
+    from app.llm.groq_provider import GroqLLMProvider
+
+    monkeypatch.setenv("LLM_DRY_RUN", "")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_key")
+    monkeypatch.setenv("LLM_PROVIDER", "auto")
+    get_settings.cache_clear()
+    provider = get_llm_provider()
+    assert isinstance(provider, GroqLLMProvider)
+
+
+@pytest.mark.skipif(not os.getenv("GROQ_API_KEY"), reason="GROQ_API_KEY not set")
+def test_real_groq_completion() -> None:
+    """Optional live Groq call when API key is present."""
+    from app.llm.groq_provider import GroqLLMProvider
+
+    provider = GroqLLMProvider()
     response = provider.complete("Say hello in one short sentence.")
     assert not response.is_degraded
     assert len(response.text) > 0
