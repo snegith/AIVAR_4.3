@@ -21,7 +21,7 @@ No thresholds are left as "TBD"; all are concrete, config-driven defaults calibr
 - Source of truth for detection is OUR `interactions` table in `detector_db` (Postgres). Langfuse is an OPTIONAL mirror for observability/UI only. Detectors, `simulate.py`, and CI never depend on Langfuse being up.
 - Both the detector API and self-hosted Langfuse v2 deploy to the SAME free-tier EC2 and are both publicly reachable, giving the evaluator two links from one AWS machine.
 - One RDS instance hosts two logical databases: `detector_db` (ours) and `langfuse_db` (Langfuse's own store). They never share tables.
-- Real LLM (Anthropic Claude) is the default in every real run. A `--dry-run` local stub exists ONLY for fast dev/CI and is never the default demo path.
+- Real LLM (Groq) is the default in every real run. A `--dry-run` local stub exists ONLY for fast dev/CI and is never the default demo path.
 
 ---
 
@@ -45,12 +45,12 @@ No thresholds are left as "TBD"; all are concrete, config-driven defaults calibr
 - Same 384-dim vectors, deterministic, offline, zero per-embedding cost.
 - Why over OpenAI embeddings: avoids per-call cost/rate limits and keeps embeddings reproducible in CI. (We still use a real LLM for generation/judge.)
 
-### LLM provider (guardrail target + LLM judge): Anthropic Claude
-- Model env-driven via `LLM_MODEL` (default: cheapest current Haiku-tier model) to keep cost minimal and avoid rot.
+### LLM provider (guardrail target + LLM judge): Groq
+- Model env-driven via `GROQ_MODEL` (default: `llama-3.1-8b-instant`, high free-tier quota) to keep cost minimal and avoid rot.
 - Two roles: (a) the target LLM the simulated attacker probes; (b) an LLM judge assigning capability level / refusal when rules are ambiguous.
-- Abstracted behind an `LLMProvider` interface; OpenAI is a drop-in swap.
-- Cost control: `--dry-run` routes to a deterministic local stub for dev/CI ONLY. Default and demo runs use real Claude, satisfying "no mocked responses in the final system."
-- Why Claude: strong, well-documented guardrails make adversarial refusals realistic - ideal for a probing scenario.
+- Abstracted behind an `LLMProvider` interface; another OpenAI-compatible backend is a drop-in swap.
+- Cost control: `--dry-run` routes to a deterministic local stub for dev/CI ONLY. Default and demo runs use real Groq (free tier), satisfying "no mocked responses in the final system."
+- Why Groq: free-tier OpenAI-compatible inference (no credit card) with fast Llama models, keeping adversarial refusals realistic at zero cost - ideal for a probing scenario.
 
 ### Concurrency / background work: FastAPI BackgroundTasks + Postgres advisory locks (NO Celery, NO Redis)
 - Detection (embed + cluster + stats + optional judge) runs as a BackgroundTask right after the event is persisted, so ingestion returns fast without a broker.
@@ -106,9 +106,9 @@ No thresholds are left as "TBD"; all are concrete, config-driven defaults calibr
 |  +------------------------------ FastAPI API (:8000) ------------------------------+     |
 |  |  POST /v1/events (slowapi per-user rate limit)                                   |     |
 |  |    1. validate (Pydantic)                                                        |     |
-|  |    2. LLMProvider -> real Claude (or --dry-run stub in dev)                        |     |
+|  |    2. LLMProvider -> real Groq (or --dry-run stub in dev)                          |     |
 |  |    3. GuardrailEvaluator -> allowed / blocked / flagged                            |     |
-|  |    4. capability tagger -> capability_level (rules; Claude judge if ambiguous)     |     |
+|  |    4. capability tagger -> capability_level (rules; Groq judge if ambiguous)       |     |
 |  |    5. EmbeddingService (fastembed) -> 384-d vector                                |     |
 |  |    6. persist Session + Interaction to detector_db  = SOURCE OF TRUTH              |     |
 |  |    7. [optional] mirror trace to Langfuse v2, store langfuse_trace_id             |     |
@@ -147,7 +147,7 @@ Evaluator sees two links from the same box:
   http://EC2_PUBLIC_IP:3000        (self-hosted Langfuse v2 UI)
 ```
 
-Flow: user message -> validate -> real Claude -> guardrail + capability tag -> embed -> persist to `detector_db` (+optional Langfuse mirror) -> BackgroundTask -> three independent detectors -> risk scorer (reset/decay/combine) -> persist risk + patterns -> alert when threshold crossed -> surfaced via `GET /v1/alerts` and deep-linked into Langfuse. Every step logs structured JSON.
+Flow: user message -> validate -> real Groq -> guardrail + capability tag -> embed -> persist to `detector_db` (+optional Langfuse mirror) -> BackgroundTask -> three independent detectors -> risk scorer (reset/decay/combine) -> persist risk + patterns -> alert when threshold crossed -> surfaced via `GET /v1/alerts` and deep-linked into Langfuse. Every step logs structured JSON.
 
 ---
 
@@ -237,7 +237,7 @@ Common windowing: each detector runs on a rolling per-user window - default last
 - Evidence: cluster_size, mean_sim, block_rate, sample prompts, contributing ids, sample trace_urls.
 
 ### 4.2 Privilege escalation (`detectors/escalation.py`, `detectors/capability.py`)
-- Capability tagging (0..4): 0 general/chit-chat; 1 read/summarize; 2 modify/generate actionable content; 3 elevated/admin/system-level ops or config; 4 execute/exfiltrate/bypass controls. Rule+regex classifier first; low-confidence cases call the Claude judge (strict rubric returning one integer). Cached on the row (computed once).
+- Capability tagging (0..4): 0 general/chit-chat; 1 read/summarize; 2 modify/generate actionable content; 3 elevated/admin/system-level ops or config; 4 execute/exfiltrate/bypass controls. Rule+regex classifier first; low-confidence cases call the Groq judge (strict rubric returning one integer). Cached on the row (computed once).
 - Aggregate to a session-level series: `level_i` = max capability_level per session, ordered by session `started_at`. Per-session max denoises within-session chatter.
 - Primary trend metrics (robust at small n, unlike Mann-Kendall):
   - `rho` = Spearman correlation between session_index and `level_i`.
@@ -305,7 +305,7 @@ All bodies are Pydantic; all errors return `{ "error": {"code": str, "message": 
 ### Ingestion
 - `POST /v1/events`
   - Request: `{ user_id: str, session_id: str | null, prompt: str, client_meta?: object }` (null/stale session_id creates a new session).
-  - Behavior: real Claude call, guardrail + capability tag, embed, persist, optional Langfuse mirror, schedule detection BackgroundTask.
+  - Behavior: real Groq call, guardrail + capability tag, embed, persist, optional Langfuse mirror, schedule detection BackgroundTask.
   - Response `202`: `{ interaction_id, session_id, guardrail_outcome, response_preview, risk_score, status, langfuse_trace_id? }`.
   - Errors: `400` invalid body, `429` rate-limited, `502` LLM provider failure, `503` DB unavailable.
 
@@ -374,8 +374,8 @@ All bodies are Pydantic; all errors return `{ "error": {"code": str, "message": 
 - Justification recap: EC2+compose (not Fargate) for free tier; RDS (not DynamoDB) for correlation/vector queries; advisory locks (not ElastiCache); direct ports (not ALB); Langfuse v2 (not v3) to fit the box.
 
 ### Secrets & config
-- On EC2: a `.env` file (chmod 600) holds `ANTHROPIC_API_KEY`, RDS creds, `ADMIN_KEY`, Langfuse keys/secrets; injected via docker-compose `env_file`. (AWS Secrets Manager is a documented future upgrade.)
-- Non-secret config (weights, thresholds, windows, half-life, `LLM_MODEL`, `LANGFUSE_ENABLED`, `LANGFUSE_HOST`) via env with defaults in `app/config.py` (Pydantic Settings).
+- On EC2: a `.env` file (chmod 600) holds `GROQ_API_KEY`, RDS creds, `ADMIN_KEY`, Langfuse keys/secrets; injected via docker-compose `env_file`. (AWS Secrets Manager is a documented future upgrade.)
+- Non-secret config (weights, thresholds, windows, half-life, `GROQ_MODEL`, `LANGFUSE_ENABLED`, `LANGFUSE_HOST`) via env with defaults in `app/config.py` (Pydantic Settings).
 
 ### Health checks & errors
 - `/health` (liveness), `/ready` (detector_db + model, + Langfuse if enabled). Docker `healthcheck` hits `/health`.
@@ -384,7 +384,7 @@ All bodies are Pydantic; all errors return `{ "error": {"code": str, "message": 
 - Langfuse mirror failures are swallowed and logged (never block ingestion or detection) since Langfuse is non-authoritative.
 
 ### Deployment scripts
-- `deploy/ec2_bootstrap.sh`: install Docker + compose; create 2GB swap + set `vm.swappiness=10`; clone repo; write `.env` (prompts for `ANTHROPIC_API_KEY`, RDS creds, `ADMIN_KEY`, `LANGFUSE_INIT_PROJECT_PUBLIC_KEY`, `LANGFUSE_INIT_PROJECT_SECRET_KEY` so no manual UI step is ever needed).
+- `deploy/ec2_bootstrap.sh`: install Docker + compose; create 2GB swap + set `vm.swappiness=10`; clone repo; write `.env` (prompts for `GROQ_API_KEY`, RDS creds, `ADMIN_KEY`, `LANGFUSE_INIT_PROJECT_PUBLIC_KEY`, `LANGFUSE_INIT_PROJECT_SECRET_KEY` so no manual UI step is ever needed).
 - `deploy/deploy.sh`: build image -> ship to EC2 (registry or scp `docker save`) -> `docker compose -f docker-compose.ec2.yml up -d`.
 - `deploy/migrate.sh`: run Alembic migrations (incl. `CREATE EXTENSION vector`) against `detector_db`; create `langfuse_db` if absent (Langfuse auto-migrates its own schema on first boot).
 - `Makefile`: `up`, `down`, `test`, `simulate`, `langfuse-up`, `deploy`. README documents local run, Langfuse toggle, AWS deploy, and the v2 production caveat.
@@ -398,9 +398,9 @@ adversarial-detector/
   README.md                       # setup, run, Langfuse v2 toggle + caveat, deploy, architecture
   Makefile                        # up, down, test, simulate, langfuse-up, deploy
   pyproject.toml                  # deps (fastapi, uvicorn, sqlalchemy, alembic, pgvector,
-                                  #   fastembed, scikit-learn, scipy, numpy, anthropic,
+                                  #   fastembed, scikit-learn, scipy, numpy, groq,
                                   #   slowapi, tenacity, langfuse), ruff/mypy/pytest config
-  .env.example                    # LLM_MODEL, LANGFUSE_ENABLED, LANGFUSE_HOST/keys, ADMIN_KEY, RDS creds
+  .env.example                    # GROQ_MODEL, LANGFUSE_ENABLED, LANGFUSE_HOST/keys, ADMIN_KEY, RDS creds
   docker-compose.yml              # local: api + postgres(pgvector, two DBs) + optional langfuse:2
   docker-compose.ec2.yml          # EC2: api + langfuse:2, both pointing at RDS
   docker/
@@ -430,7 +430,7 @@ adversarial-detector/
       health.py                   # /health, /ready
     llm/
       provider.py                 # LLMProvider interface
-      anthropic_provider.py       # real Claude client (target + judge)
+      groq_provider.py            # real Groq client (target + judge)
       stub_provider.py            # deterministic --dry-run stub (dev/CI only)
       guardrail.py                # GuardrailEvaluator (allowed/blocked/flagged)
     embeddings/
@@ -440,7 +440,7 @@ adversarial-detector/
       probing.py                  # ProbingDetector (DBSCAN eps=0.25)
       escalation.py               # EscalationDetector (Spearman/OLS slope)
       enumeration.py              # EnumerationDetector
-      capability.py               # capability tagger (rules + Claude judge)
+      capability.py               # capability tagger (rules + Groq judge)
       normalize.py                # normalization + template signatures + numeric extraction
     scoring/
       risk_scorer.py              # inactivity reset + decay + weighted combine + alert
@@ -477,7 +477,7 @@ Each phase yields something independently testable; each depends on the prior.
 - Phase 0 - Scaffold & config. Repo, pyproject, `config.py`, `logging.py`, `ratelimit.py`, `docker-compose.yml` (api + postgres two-DB init). Test: `docker compose up` starts DB + api; `pytest` collects. Depends on: nothing.
 - Phase 1 - Data layer. SQLAlchemy models + Alembic (0001 enables pgvector + tables) + repositories (windowed queries, advisory-lock helper). Test: migrations apply on `detector_db`; repo round-trips an interaction with a 384-d embedding; windowed query returns correct rows. Depends on: Phase 0.
 - Phase 2 - Embeddings + normalization. fastembed `EmbeddingService`, `normalize.py`. Test: similar prompts rank higher in cosine sim; enumerated prompts collapse to one `template_signature`; numeric slots extracted. Depends on: Phase 0.
-- Phase 3 - LLM provider + guardrail + capability. `anthropic_provider.py`, `stub_provider.py`, `guardrail.py`, `capability.py`. Test (real skipped without key; stub always): disallowed prompt -> `blocked`; admin-style prompt -> `capability_level >= 3`. Depends on: Phase 0.
+- Phase 3 - LLM provider + guardrail + capability. `groq_provider.py`, `stub_provider.py`, `guardrail.py`, `capability.py`. Test (real skipped without key; stub always): disallowed prompt -> `blocked`; admin-style prompt -> `capability_level >= 3`. Depends on: Phase 0.
 - Phase 4 - Three detectors (independent). `probing.py`, `escalation.py`, `enumeration.py` as pure functions. Test: each fires only on its target synthetic window and stays silent on benign windows (probing eps=0.25 catches 0.78-sim paraphrases; escalation fires at ~10 sessions via Spearman). Depends on: Phases 1-3.
 - Phase 5 - Risk scorer. `risk_scorer.py`: reset (early-return) + decay + weighted combine + alert. Test: `test_scoring` verifies EWMA math, accumulation over cycles, hard reset after inactivity (profile reads risk_score=0 and all sub-signals=0 and detectors were skipped), alert at >= 70, AND that a second recompute without a new real event keeps the score at 0 (early-return ordering enforced). Depends on: Phase 4.
 - Phase 6 - Detection orchestration. `detection/orchestrator.py` wiring detectors + scorer + advisory lock + pattern/alert writes, invoked as a BackgroundTask. Test: assert risk row + patterns + alert persisted; `test_concurrency` hammers one user_id and asserts no lost updates. Depends on: Phases 4-5.

@@ -96,6 +96,32 @@ process and health-gated on `/ready` (before pytest and again immediately
 before the harness). In CI, `test_simulate.py` **fails** (never skips) if the
 API is unreachable, so a broken end-to-end run can't slip through green.
 
+## LLM provider (Groq free tier)
+
+The detector uses **Groq** (free tier, no credit card) as the real LLM backend.
+CI and `simulate.py --dry-run` always use the deterministic stub via
+`LLM_DRY_RUN=true` — unaffected by provider keys.
+
+| Env var | Purpose |
+|---------|---------|
+| `LLM_PROVIDER` | `auto` (default), `groq`, or `stub` |
+| `GROQ_API_KEY` | API key from [console.groq.com/keys](https://console.groq.com/keys) |
+| `GROQ_MODEL` | Default `llama-3.1-8b-instant` (high free-tier quota) |
+
+With `LLM_PROVIDER=auto`, **Groq is used** when `GROQ_API_KEY` is set, otherwise
+the detector falls back to the deterministic stub.
+
+**Groq rate limits:** the free tier is ~30 requests/minute. A full `simulate.py`
+run issues ~225–245 LLM calls, so use **`--request-delay-ms 3000`** (or set
+`SIMULATE_REQUEST_DELAY_MS=3000` in `.env`). EC2 bootstrap sets this
+automatically. The Groq provider retries on 429 with exponential backoff.
+
+```bash
+# Local with Groq (API must not have LLM_DRY_RUN=true)
+GROQ_API_KEY=gsk_... LLM_PROVIDER=groq docker compose up -d --build
+python simulate.py --base-url http://localhost:8000 --request-delay-ms 3000
+```
+
 ## AWS deployment (Phase 11)
 
 Free-tier topology: one **EC2 t3.micro** runs the detector `api` (`:8000`) and
@@ -112,8 +138,8 @@ REPO_URL=https://github.com/<you>/<repo>.git ./deploy/ec2_bootstrap.sh
 
 `ec2_bootstrap.sh` installs Docker + the Compose plugin, creates a **2GB swap**
 file, sets `vm.swappiness=10`, clones the repo, and writes a chmod-600 `.env`
-(prompting for the Anthropic key, RDS creds, admin key, and Langfuse init keys —
-so first boot needs **no** manual UI step).
+(prompting for the **Groq API key** (free tier), RDS creds, admin key, and
+Langfuse init keys — so first boot needs **no** manual UI step).
 
 ### Deploy
 
