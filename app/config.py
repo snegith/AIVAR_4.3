@@ -5,6 +5,8 @@ from environment variables with documented defaults. No hardcoded secrets.
 """
 
 from functools import lru_cache
+import os
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,7 +16,6 @@ class Settings(BaseSettings):
     """Runtime configuration for the adversarial pattern detector."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
         populate_by_name=True,
@@ -124,4 +125,9 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Return cached settings singleton."""
-    return Settings()
+    env_file = os.environ.get("APP_ENV_FILE")
+    if env_file:
+        return Settings(_env_file=env_file)
+    if os.environ.get("APP_ENV", "").lower() == "production":
+        return Settings(_env_file=None)
+    return Settings(_env_file=".env" if Path(".env").is_file() else None)
